@@ -4,6 +4,7 @@ use crate::config::ContainerOpts;
 use crate::errors::Errcode;
 use crate::mounts::clean_mounts;
 use crate::namespaces::handle_child_uid_map;
+use crate::resources::{restrict_resources, clean_cgroups};
 
 use nix::sys::utsname::uname;
 use nix::sys::wait::waitpid;
@@ -31,6 +32,7 @@ impl Container {
 
     pub fn create(&mut self) -> Result<(), Errcode> {
         let pid = generate_child_process(self.config.clone())?;
+        restrict_resources(&self.config.hostname, pid)?;
         handle_child_uid_map(pid, self.sockets.0)?;
         //craete the child pid here
         self.child_pid = Some(pid);
@@ -50,6 +52,11 @@ impl Container {
             return Err(Errcode::SocketError(4));
         }
         clean_mounts(&self.config.mount_dir)?;
+
+        if let Err(e) = clean_cgroups(&self.config.hostname){
+            log::error!("Cgroups cleaning failed: {}", e);
+            return Err(e);
+        }
         Ok(())
     }
 }
